@@ -1,0 +1,255 @@
+services:
+  
+  kafka:
+    container_name: kafka
+    image: confluentinc/cp-kafka:7.8.0
+    ports:
+      - 9092:9092   # Internal communication
+      - 29092:29092 # External port for clients outside the Docker network
+      - 9093:9093   # Controller communication
+    environment:
+
+      CLUSTER_ID: "D0c0cYFxS7iMthJPUgQFvA"    # docker run --rm -it -v kafka-data:/var/lib/kafka/data confluentinc/cp-kafka:7.8.0 sh
+                            
+      # This enables KRaft mode in Kafka.
+      KAFKA_KRAFT_MODE: "true"                
+      KAFKA_PROCESS_ROLES: broker,controller  # Kafka acts as both broker and controller.
+
+      # Unique identifier for the node
+      KAFKA_NODE_ID: 1 
+
+      # Define the controller quorum voters
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093  
+
+      # Listener configurations
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093 # INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093  
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      
+      KAFKA_CLASSPATH: /usr/share/java/*
+
+      # Log directory
+      KAFKA_LOG_DIRS: /var/lib/kafka/data        # Where Kafka stores its logs.
+      KAFKA_LOG4J_LOGGERS: "org.apache.kafka=DEBUG,org.apache.kafka.connect=DEBUG"
+      
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # Since we’re running one broker, one replica is enough. Prod: 3
+      KAFKA_LOG_RETENTION_HOURS: 168             # 1 week log retention
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0  # No delay for consumer rebalancing.
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1  # Prod: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      #KAFKA_BROKER_ID: 1
+      #KAFKA_MIN_INSYNC_REPLICAS: 1
+
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" 
+
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - debezium-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    
+
+  kafka-connect:
+    container_name: kafka-connect
+    image: debezium/connect:3.0.0.Final
+    ports:
+      - 8083:8083
+    environment:
+      # General Configs
+      CONNECT_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: "kafka-connect-group"
+
+      CONNECT_TOPIC_CREATION_ENABLE: false
+
+     
+      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry0:8081 
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry0:8081 
+
+      
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_KEY_CONVERTER_SCHEMAS_ENABLE: false
+
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER_SCHEMAS_ENABLE: false
+
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_PLUGIN_PATH: /usr/share/java
+                           
+      CONNECT_LOG4J_LOGGERS: "org.apache.kafka=DEBUG,org.apache.kafka.connect=WARN"  # INFO ya da WARN cevrilmeli
+    depends_on:
+      - kafka
+      - schema-registry
+    volumes:
+      - ./connect-plugins:/usr/share/java  
+      - ./connect-log4j.properties:/kafka/config/connect-log4j.properties
+      - ./connect-standalone.properties:/kafka/config/connect-standalone.properties
+    networks:
+      - debezium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    command: >
+      bash -c "/kafka/bin/connect-standalone.sh /kafka/config/connect-standalone.properties"
+      
+
+  schema-registry:
+    container_name: schema-registry
+    image: confluentinc/cp-schema-registry:7.8.0
+    ports:
+      - 8081:8081
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL: PLAINTEXT
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_SCHEMA_REGISTRY_INTER_INSTANCE_PROTOCOL: "http"
+      SCHEMA_REGISTRY_LOG4J_ROOT_LOGLEVEL: INFO
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
+      SCHEMA_REGISTRY_METRICS_PORT: 8086
+    depends_on:
+      - kafka
+    networks:
+      - debezium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    
+  kafka-rest:
+    container_name: kafka-rest
+    image: confluentinc/cp-kafka-rest:7.8.0
+    ports:
+      - 8082:8082
+    environment:
+      KAFKA_REST_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      KAFKA_REST_LISTENERS: http://0.0.0.0:8082
+      KAFKA_REST_HOST_NAME: kafka-rest
+    depends_on:
+      - kafka
+    networks:
+      - debezium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+  ksql-server:
+    container_name: ksql-server
+    image: confluentinc/cp-ksqldb-server:7.8.0
+    ports:
+      - 8088:8088
+    environment:
+      KSQL_BOOTSTRAP_SERVERS: kafka:9092
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR: 1
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_MIN_INSYNC_REPLICAS: 1
+    depends_on:
+      - kafka
+      - schema-registry
+    networks:
+      - debezium-network
+
+  kafbat-ui:
+    container_name: kafbat-ui
+    image: ghcr.io/kafbat/kafka-ui:latest
+    ports:
+      - 8084:8080  # Kafka UI will be accessible at http://localhost:8084
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local-cluster
+      - KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS=kafka:9092 # Broker
+      - KAFKA_CLUSTERS_0_SCHEMAREGISTRY=http://schema-registry:8081  # Schema Registry
+      - KAFKA_CLUSTERS_0_KSQLDB_SERVER=http://ksql-server:8088       # KSQL DB
+      - KAFKA_CLUSTERS_0_KAFKA_CONNECT_0_NAME=connect-cluster
+      - KAFKA_CLUSTERS_0_KAFKA_CONNECT_0_ADDRESS=http://kafka-connect:8083
+      - DYNAMIC_CONFIG_ENABLED=true
+    depends_on:
+      - kafka
+    networks:
+      - debezium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    ports:
+      - 5050:80  # Expose pgAdmin on http://localhost:5050
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com  # Default pgAdmin email
+      - PGADMIN_DEFAULT_PASSWORD=admin         # Default pgAdmin password
+    depends_on:
+      - postgres-db-source
+      - postgres-db-target
+    networks:
+      - debezium-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+  
+  postgres-db-source:
+    container_name: postgres-db-source
+    hostname: postgres-db-source
+    image: debezium/postgres:17-alpine
+    ports:
+      - 5433:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=123456
+      - POSTGRES_DB=DebeziumDB
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres-db-source:/var/lib/postgresql/data  
+    networks:
+      - debezium-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5433"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+
+  postgres-db-target:
+    container_name: postgres-db-target
+    hostname: postgres-db-target
+    image: debezium/postgres:17-alpine
+    ports:
+      - 5434:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=123456
+      - POSTGRES_DB=DebeziumDB
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres-db-target:/var/lib/postgresql/data
+    networks:
+      - debezium-network    
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5434"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  kafka-data:
+  postgres-db-source:
+  postgres-db-target:
+
+networks:
+  debezium-network:
+    driver: bridge
