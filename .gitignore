@@ -1,1 +1,10 @@
 docker/kafka/kafka-connect/connect-plugins/debezium-connector-postgres/*
+
+docker/kafka/volumes/kafka-broker-volume/*
+docker/kafka/volumes/kafka-connect-plugins-volume/*
+docker/kafka/volumes/schema-registry-volume/*
+docker/kafka/volumes/kafka-rest-volume/*
+docker/kafka/volumes/kafka-broker-volume/*
+docker/kafka/volumes/kafka-broker-volume/*
+docker/kafka/volumes/postgres-db-source-volume/*
+docker/kafka/volumes/postgres-db-target-volume/*

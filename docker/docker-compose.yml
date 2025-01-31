@@ -45,7 +45,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" 
 
     volumes:
-      - kafka-data-volume:/var/lib/kafka/data
+      - ./kafka/volumes/kafka-broker-volume:/var/lib/kafka/data
     networks:
       - debezium-network
     healthcheck:
@@ -89,9 +89,9 @@ services:
       - kafka
       - schema-registry
     volumes:
-      - ./connect-plugins-volume:/connect  
-      - ./connect-log4j.properties:/kafka/config/connect-log4j.properties
+      - ./kafka/kafka-connect/plugins:/connect-plugins
       - ./connect-standalone.properties:/kafka/config/connect-standalone.properties
+      - ./kafka/kafka-connect/connect-log4j.properties:/kafka/config/connect-log4j.properties
     networks:
       - debezium-network
     healthcheck:
@@ -121,6 +121,8 @@ services:
       - kafka
     networks:
       - debezium-network
+    volumes:
+      - ./kafka/volumes/schema-registry-volume:/var/lib/schema-registry
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/"]
       interval: 10s
@@ -140,6 +142,8 @@ services:
       - kafka
     networks:
       - debezium-network
+    volumes:
+      - ./kafka/volumes/kafka-rest-volume/kafka-rest.properties:/etc/kafka-rest/kafka-rest.properties
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8082/"]
       interval: 10s
@@ -160,6 +164,8 @@ services:
       - schema-registry
     networks:
       - debezium-network
+    volumes:
+      - ./kafka/ksql-db/ksql-server.properties:/etc/ksql/ksql-server.properties
 
   kafbat-ui:
     container_name: kafbat-ui
@@ -176,6 +182,10 @@ services:
       - DYNAMIC_CONFIG_ENABLED=true
     depends_on:
       - kafka
+      - kafka-connect
+      - schema-registry
+      - kafka-rest
+      - ksql-server
     networks:
       - debezium-network
     healthcheck:
@@ -215,7 +225,7 @@ services:
       - POSTGRES_DB=DebeziumDB
       - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
-      - postgres-db-source-volume:/var/lib/postgresql/data  
+      - ./docker/volumes/postgres-db-source-volume:/var/lib/postgresql/data
     networks:
       - debezium-network
     healthcheck:
@@ -236,7 +246,7 @@ services:
       - POSTGRES_DB=DebeziumDB
       - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
-      - postgres-db-target-volume:/var/lib/postgresql/data
+      - ./docker/volumes/postgres-db-target-volume:/var/lib/postgresql/data
     networks:
       - debezium-network    
     healthcheck:
@@ -246,14 +256,20 @@ services:
       retries: 3
 
 volumes:
-  kafka-data-volume:
-    name: kafka-data-volume
-  connect-plugins-volume:  
-    driver: local
-  postgres-db-source-volume:
-    name: postgres-db-source-volume
+  kafka-broker-volume:
+    name: kafka-broker-volume
+  schema-registry-volume:
+    name: schema-registry-volume
+  kafka-connect-plugins-volume:
+    name: kafka-connect-plugins-volume
+  kafka-rest-config-volume:
+    name: kafka-rest-config-volume
+  ksql-server-config-volume:
+    name: ksql-server-config-volume
   postgres-db-target-volume:
     name: postgres-db-target-volume
+  postgres-db-source-volume:
+    name: postgres-db-source-volume
 
 networks:
   debezium-network:
