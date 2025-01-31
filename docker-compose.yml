@@ -9,7 +9,7 @@ services:
       - 9093:9093   # Controller communication
     environment:
 
-      CLUSTER_ID: "D0c0cYFxS7iMthJPUgQFvA"    # docker run --rm -it -v kafka-data:/var/lib/kafka/data confluentinc/cp-kafka:7.8.0 sh
+      CLUSTER_ID: "D0c0cYFxS7iMthJPUgQFvA"    # docker run --rm -it -v kafka-data-volume:/var/lib/kafka/data confluentinc/cp-kafka:7.8.0 sh
                             
       # This enables KRaft mode in Kafka.
       KAFKA_KRAFT_MODE: "true"                
@@ -45,7 +45,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" 
 
     volumes:
-      - kafka-data:/var/lib/kafka/data
+      - kafka-data-volume:/var/lib/kafka/data
     networks:
       - debezium-network
     healthcheck:
@@ -82,14 +82,14 @@ services:
       CONNECT_INTERNAL_VALUE_CONVERTER_SCHEMAS_ENABLE: false
 
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
-      CONNECT_PLUGIN_PATH: /usr/share/java
+      CONNECT_PLUGIN_PATH: /connect
                            
       CONNECT_LOG4J_LOGGERS: "org.apache.kafka=DEBUG,org.apache.kafka.connect=WARN"  # INFO ya da WARN cevrilmeli
     depends_on:
       - kafka
       - schema-registry
     volumes:
-      - ./connect-plugins:/connect  
+      - ./connect-plugins-volume:/connect  
       - ./connect-log4j.properties:/kafka/config/connect-log4j.properties
       - ./connect-standalone.properties:/kafka/config/connect-standalone.properties
     networks:
@@ -215,7 +215,7 @@ services:
       - POSTGRES_DB=DebeziumDB
       - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
-      - postgres-db-source:/var/lib/postgresql/data  
+      - postgres-db-source-volume:/var/lib/postgresql/data  
     networks:
       - debezium-network
     healthcheck:
@@ -236,7 +236,7 @@ services:
       - POSTGRES_DB=DebeziumDB
       - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
-      - postgres-db-target:/var/lib/postgresql/data
+      - postgres-db-target-volume:/var/lib/postgresql/data
     networks:
       - debezium-network    
     healthcheck:
@@ -246,9 +246,14 @@ services:
       retries: 3
 
 volumes:
-  kafka-data:
-  postgres-db-source:
-  postgres-db-target:
+  kafka-data-volume:
+    name: kafka-data-volume
+  connect-plugins-volume:  
+    driver: local
+  postgres-db-source-volume:
+    name: postgres-db-source-volume
+  postgres-db-target-volume:
+    name: postgres-db-target-volume
 
 networks:
   debezium-network:
