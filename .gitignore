@@ -1,1 +1,1 @@
-connect-plugins-volume/
+docker/kafka/kafka-connect/connect-plugins/debezium-connector-postgres/*
