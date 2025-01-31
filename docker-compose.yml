@@ -89,7 +89,7 @@ services:
       - kafka
       - schema-registry
     volumes:
-      - ./connect-plugins:/usr/share/java  
+      - ./connect-plugins:/connect  
       - ./connect-log4j.properties:/kafka/config/connect-log4j.properties
       - ./connect-standalone.properties:/kafka/config/connect-standalone.properties
     networks:
